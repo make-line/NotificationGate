@@ -28,4 +28,13 @@ public class NotifyStrategy {
 
     private int everyMinutesHardMode;
 
+    public int getValueByStage(Stage stage){
+        return switch (stage){
+            case FIRST -> stageFirstBeforeMinutes;
+            case SECOND -> stageSecondBeforeMinutes;
+            case FINAL -> stageFinalBeforeMinutes;
+            case CREATE -> 0;
+        };
+    }
+
 }

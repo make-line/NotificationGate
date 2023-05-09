@@ -1,11 +1,11 @@
 package com.example.notificationgate.scheduler;
 
 import com.example.notificationgate.model.EventUser;
+import com.example.notificationgate.model.NotifyStrategy;
 import com.example.notificationgate.model.dto.Message;
 import com.example.notificationgate.model.enums.Stage;
 import com.example.notificationgate.repo.EventUserRepository;
 import com.example.notificationgate.scheduler.email.EmailService;
-import com.example.notificationgate.scheduler.telegram.TelegramService;
 import com.example.notificationgate.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -19,11 +19,8 @@ import java.util.List;
 @Component
 public class Scheduler {
 
-    private KafkaTemplate<String, Message> kafkaTemplate;
+    private final KafkaTemplate<String, Message> kafkaTemplate;
     private final EventUserRepository eventUserRepository;
-    private final EmailService emailService;
-    private final UserService userService;
-    private final TelegramService telegramService;
 
     private String url = "http://localhost:8080/events/set-answer/";
 
@@ -32,13 +29,13 @@ public class Scheduler {
         System.out.println("Begin");
         List<EventUser> eventUsers = eventUserRepository.findAll();
         eventUsers.forEach(e -> {
-                    if (e.getNextNotify().isBefore(LocalDateTime.now())) {
+                    if (e.getNextNotify() != null && e.getNextNotify().isBefore(LocalDateTime.now())) {
                         Message message = Message.builder()
                                 .name(e.getEvent().getName())
                                 .timestamp(e.getEvent().getTimestamp())
                                 .description(e.getEvent().getDescription())
-                                .okUrl(url+e.getEvent().getId()+"/OK")
-                                .cancelUrl(url+e.getEvent().getId()+"/CANCEL")
+                                .okUrl(url + e.getEvent().getId() + "/OK")
+                                .cancelUrl(url + e.getEvent().getId() + "/CANCEL")
                                 .build();
 
                         if (e.getNotifyStrategy().getFirstCorpEmailSendStage().getValue() <= e.getNextStage().getValue()
@@ -68,15 +65,15 @@ public class Scheduler {
 //                                    e.getUser().getTelegramChatId());
 
                         }
-                        if (e.getNextStage().getValue() + 1 > 3) {
-                            e.setNextNotify(null);
-                        } else {
-                            e.setNextStage(Stage.getByValue(e.getNextStage().getValue() + 1));
-                            switch (e.getNextStage()) {
-                                case FIRST -> e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageFirstBeforeMinutes()));
-                                case SECOND -> e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageSecondBeforeMinutes()));
-                                case FINAL -> e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageFinalBeforeMinutes()));
-                            }
+
+                        e.setNextStage(getNextStage(e.getNotifyStrategy(), e.getEvent().getTimestamp()));
+                        switch (e.getNextStage()) {
+                            case FIRST ->
+                                    e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageFirstBeforeMinutes()));
+                            case SECOND ->
+                                    e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageSecondBeforeMinutes()));
+                            case FINAL ->
+                                    e.setNextNotify(e.getEvent().getTimestamp().minusMinutes(e.getNotifyStrategy().getStageFinalBeforeMinutes()));
                         }
                         eventUserRepository.save(e);
                     }
@@ -84,12 +81,14 @@ public class Scheduler {
         );
     }
 
-    private String getOkLink(EventUser eu) {
-        return url + eu.getEvent().getId() + "/OK" ;
-    }
-
-    private String getCancelLink(EventUser eu) {
-        return url + eu.getEvent().getId() + "/CANCEL";
+    private Stage getNextStage(NotifyStrategy notifyStrategy, LocalDateTime timestamp) {
+        Stage[] stages = new Stage[]{Stage.FIRST, Stage.SECOND, Stage.FINAL};
+        for (Stage stage : stages) {
+            if (timestamp.minusMinutes(notifyStrategy.getValueByStage(stage)).isAfter(LocalDateTFime.now())) {
+                return stage;
+            }
+        }
+        return null;
     }
 
 }
